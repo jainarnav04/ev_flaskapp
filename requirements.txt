@@ -1,0 +1,5 @@
+Flask
+gunicorn
+firebase-admin
+python-dotenv
+# Add any other dependencies below
