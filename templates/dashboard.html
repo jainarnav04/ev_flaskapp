@@ -1,0 +1,1403 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Charging Station Dashboard</title>
+    <script async defer src="https://maps.googleapis.com/maps/api/js?key=AIzaSyDTkgXCM1kVRjOEJkJRXA57V4jLe--5b_k&libraries=places&callback=initMap"></script>
+    <style>
+        /* Background similar to login page */
+html, body {
+    min-height: 100vh; /* Ensure the entire page can scroll */
+    overflow-y: auto; /* Enable vertical scrolling for the whole page */
+    margin: 0;
+    background: linear-gradient(90deg, #e2e2e2, #c9ffd6);
+    font-family: 'Poppins', sans-serif;
+    color: white;
+}
+
+body {
+    display: block; /* Remove flex from body */
+}
+
+/* Main Dashboard Container */
+.dashboard-container {
+    display: flex;
+    width: 100%;
+    min-height: 100vh;
+    background: white;
+    border-radius: 0px;
+    box-shadow: 0px 0px 15px rgba(0, 0, 0, 0.2);
+    /* overflow-y: auto; -- This is now handled by html, body */
+}
+
+/* Left Side: Charging Station Details */
+.dashboard-left {
+    width: 28%;
+    background: #4CAF50; /* Green box */
+    padding: 32px 24px;
+    color: white;
+    border-radius: 0px 120px 120px 0px;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-start;
+    text-align: left;
+    box-shadow: 0 0 30px rgba(0, 0, 0, .2);
+    overflow-y: auto;
+}
+
+.dashboard-left h2 {
+    margin-bottom: 40px; /* Removed negative margin-top */
+    text-align: center;
+    font-size: 30px;
+}
+
+.dashboard-left p {
+    margin: 10px 10px;
+    font-size: 16px;
+}
+
+/* Right Side: Vehicle List */
+.dashboard-right {
+    width: 72%;
+    padding: 32px 32px 32px 24px;
+    background: #fff;
+    color: black;
+    border-radius: 0 16px 16px 0;
+    min-height: 100vh;
+    box-sizing: border-box;
+}
+
+.dashboard-right table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 10px;
+}
+
+.dashboard-right th, .dashboard-right td {
+    border: 1px solid #ddd;
+    padding: 8px;
+    text-align: center;
+}
+
+.dashboard-right th {
+    background-color: #4CAF50;
+    color: white;
+}
+
+/* Buttons Styling */
+.addbtn{
+    border: 2px solid #fff;
+    color: white;
+    background: #4CAF50;
+    padding: 10px 20px;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: 0.3s;
+    box-shadow: none;
+    width: 232px;
+    height: 40px;
+    position: absolute; 
+    margin-top: 10px;
+    top: 4%;
+    left: 81.5%;
+
+}
+.btn-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center; /* Center buttons horizontally */
+    margin-top: 20px; /* Space from map */
+    gap: 15px; /* Space between buttons */
+}
+
+.btn {
+    border: 2px solid #fff;
+    color: white;
+    background: transparent;
+    padding: 10px 20px;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: 0.3s;
+    box-shadow: none;
+    width: 232px;
+    height: 40px;
+    /* Removed absolute positioning */
+}
+
+.btn:hover {
+    background-color: #4CAF50;
+    color: white;
+}
+
+.logout-btn {
+    /* Removed absolute positioning */
+    background-color: white;
+    color: #4CAF50;
+    padding: 10px 20px;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: 0.3s;
+    text-align: center;
+    width: 200px;
+}
+
+.logout-btn:hover {
+    background: darkred;
+}
+
+
+/* Vehicle Modal Styling */
+.vehiclemodal {
+    display: none;
+    position: fixed;
+    z-index: 1;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.4);
+}
+
+.vehiclemodal-content {
+    background-color: white;
+    margin: auto;
+    padding: 20px;
+    width: 40%;
+    max-width: 500px;
+    max-height: 90vh;
+    overflow-y: auto;
+    border-radius: 10px;
+    text-align: center;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-start;
+}
+
+.close {
+    float: right;
+    font-size: 24px;
+    cursor: pointer;
+}
+
+/* Center Modal */
+
+.modal {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.5);
+}
+
+/* Modal Content */
+.modal-content {
+    background: white;
+    padding: 20px;
+    width: 40%;
+    max-width: 500px;
+    max-height: 90vh;
+    overflow-y: auto;
+    border-radius: 10px;
+    text-align: center;
+    box-shadow: 0px 4px 10px rgba(0, 0, 0, 0.1);
+}
+
+/* Modal Title */
+.modal-content h2 {
+    margin-bottom: 15px;
+    font-size: 20px;
+    color: #333;
+}
+
+.modal-content label {
+    display: block; /* Ensures labels are above inputs */
+    font-weight: bold;
+    margin-top: 10px;
+    text-align: left;
+    width: 90%;
+    color: #333;
+}
+
+/* Form Fields */
+.modal-content input {
+    width: 90%;
+    padding: 8px;
+    margin: 10px 0;
+    border: 1px solid #ccc;
+    border-radius: 5px;
+}
+
+/* Save Button */
+.save-btn {
+    background: #4CAF50;
+    color: white;
+    padding: 10px 15px;
+    border: none;
+    border-radius: 5px;
+    font-size: 16px;
+    cursor: pointer;
+}
+
+.save-btn:hover {
+    background: #45a049;
+}
+
+/* Add these styles to your existing CSS */
+.button-group {
+    display: flex;
+    justify-content: center;
+    gap: 10px;
+    margin-top: 20px;
+}
+
+.close-btn {
+    background: #ff4444;
+    color: white;
+    padding: 10px 15px;
+    border: none;
+    border-radius: 5px;
+    font-size: 16px;
+    cursor: pointer;
+    transition: background-color 0.3s;
+}
+
+.close-btn:hover {
+    background: #cc0000;
+}
+
+/* New styles for Add Vehicle modal alignment and headings */
+.vehiclemodal-content h3 {
+    text-align: left;
+    margin-top: 20px;
+    margin-bottom: 10px;
+    color: #333;
+    font-size: 18px;
+    border-bottom: 1px solid #eee;
+    padding-bottom: 5px;
+}
+
+.vehiclemodal-content .form-group {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    margin-bottom: 15px;
+}
+
+.vehiclemodal-content .form-group label {
+    margin-bottom: 5px;
+    font-weight: bold;
+    color: #333;
+}
+
+
+.vehiclemodal-content .form-group input,
+.vehiclemodal-content .form-group select {
+    width: 100%;
+    padding: 10px;
+    border: 1px solid #ccc;
+    border-radius: 5px;
+    box-sizing: border-box; /* Include padding in width */
+}
+.chargingCost
+{
+    margin-bottom: 5px;
+    font-weight: bold;
+    color: #333;
+}
+.add-vehicle-btn {
+    width: 100%;
+    padding: 15px;
+    font-size: 18px;
+    margin-top: 20px;
+}
+
+.invalid-input {
+    border: 2px solid red !important;
+}
+
+.error-message {
+    color: red;
+    font-size: 0.85em;
+    margin-top: 5px;
+    margin-bottom: 10px;
+    text-align: left;
+    width: 100%;
+}
+
+.loading {
+    opacity: 0.5;
+    pointer-events: none;
+}
+
+.spinner {
+    display: inline-block;
+    width: 16px;
+    height: 16px;
+    border: 2px solid #fff;
+    border-top: 2px solid transparent;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+    margin-left: 10px;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+@media (max-width: 768px) {
+    .dashboard-container {
+        flex-direction: column;
+    }
+    .dashboard-left, .dashboard-right {
+        width: 100%;
+        border-radius: 0;
+    }
+    .dashboard-left {
+        padding: 20px;
+    }
+    .addbtn {
+        position: static;
+        margin: 10px auto;
+    }
+}
+
+    </style>
+</head>
+<body>
+    <div class="dashboard-container">
+        <!-- Left: Charging Station Details -->
+        <div class="dashboard-left">
+            <h2>Welcome,<br> {{ station.name }} <br>Charging Station</h2>
+            <p id="operator-display"><strong>Operator:</strong> {{ station.operator }}</p>
+            <p id="charging-type-display"><strong>Charging Type:</strong> {{ station.chargingType }}</p>
+            <p id="location-display"><strong>Location:</strong> {{ station.location }}</p>
+            <p id="total-slots-display"><strong>Total Slots:</strong> {{ station.total_slots }}</p>
+
+            <p id="charging-rate-display"><strong>Charging Rate:</strong> ₹{{ station.charging_rate }} per kWh</p>
+
+            <div id="slot-warning" style="display: none; color: #ff4444; margin: 10px 0; padding: 10px; background-color: #ffebee; border-radius: 5px;">
+                <strong>Warning:</strong> No slots available. New vehicles will be added to the waiting list.
+            </div>
+
+            <div id="display-map" style="height: 200px; width: 100%; margin-top: 20px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1);"></div>
+
+            <div class="btn-container">
+                <button onclick="openModal()" class="btn">Update Information</button>
+                <a href="/" class=" logout-btn">Logout</a>
+            </div>
+        </div>
+
+        <!-- Station Queue Section -->
+        <div class="dashboard-right">
+            <hr>
+            <h2>Currently Charging Vehicles</h2>
+            <button onclick="openVehicleModal()" class="addbtn">Add Vehicle</button>
+
+            <table>
+                <thead>
+                    <tr>
+                        <th>S.No</th>
+                        <th>Slot Number</th>
+                        <th>Vehicle Number</th>
+                        <th>Estimated Arrival Time</th>
+                        <th>Estimated Departure Time</th>
+                        <th>Charging Type</th>
+                        <th>Battery Capacity</th>
+                        <th>Initial Battery</th>
+                        <th>Target Battery</th>
+                        <th>Charging Time</th>
+                        <th>Wait Time</th>
+                        <th>Current Status</th>
+                        <th>Cost</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for vehicle in vehicles %}
+                    <tr id="vehicle-{{ vehicle.id }}">
+                        <td>{{ loop.index }}</td>
+                        <td>{% if vehicle.slot_number %}{{ vehicle.slot_number }}{% else %}N/A{% endif %}</td>
+                        <td>{{ vehicle.vehicle_number }}</td>
+                        <td>{{ vehicle.arrival_time }}</td>
+                        <td>{{ vehicle.departure_time }}</td>
+                        <td>{{ vehicle.chargingType }}</td>
+                        <td>{{ vehicle.battery_capacity }} kWh</td>
+                        <td>{{ vehicle.initial_battery_level }}%</td>
+                        <td>{{ vehicle.target_battery_level }}%</td>
+                        <td>
+                            {% if vehicle.charging_time_minutes >= 60 %}
+                                {{ (vehicle.charging_time_minutes / 60) | int }} hrs {{ (vehicle.charging_time_minutes % 60) | int }} min
+                            {% else %}
+                                {{ vehicle.charging_time_minutes }} min
+                            {% endif %}
+                        </td>
+                        <td>{{ vehicle.wait_time_minutes }} min</td>
+                        <td>
+                                {% if vehicle.status %}
+                                    {{ vehicle.status }}
+                                {% else %}
+                                    N/A
+                                {% endif %}
+                            </td>
+                        <td>₹{{ vehicle.charging_cost }}</td>
+                        <td>
+                            <button class="remove-btn" onclick="removeVehicle('{{ vehicle.id }}')">Remove</button>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Booking Result Modal -->
+    <div id="bookingResultModal" class="modal" style="display:none;">
+        <div class="modal-content">
+            <span class="close" onclick="closeBookingResultModal()" aria-label="Close Result Modal">&times;</span>
+            <h2>Booking Result</h2>
+            <div id="booking-result-details"></div>
+        </div>
+    </div>
+
+<div id="vehicleModal" class="vehiclemodal" role="dialog" aria-labelledby="vehicleModalTitle">
+    <div class="vehiclemodal-content">
+        <span class="close" onclick="closeVehicleModal()" aria-label="Close Add Vehicle Modal">&times;</span>
+        <h2 id="vehicleModalTitle">Add Vehicle</h2>
+        
+        <form id="addVehicleForm">
+            <h3>Vehicle Details</h3>
+            <div class="form-group">
+                <label for="vehicleNumber">Vehicle Number:</label>
+                <input type="text" id="vehicleNumber" placeholder="Vehicle Number" required>
+            </div>
+
+            <h3>Time Information</h3>
+            <div class="form-group">
+                <label for="arrivalTime">Arrival Time:</label>
+                <input type="time" id="arrivalTime" placeholder="Time of arrival" required>
+            </div>
+
+            <h3>Charging Details</h3>
+            <div class="form-group">
+                <label for="vehicleChargingType">Charging Type:</label>
+                <select id="vehicleChargingType" required>
+                    <option value="">Select Charging Type</option>
+                    <option value="AC Type 1">AC Type 1</option>
+                    <option value="AC Type 2">AC Type 2</option>
+                    <option value="CCS">CCS</option>
+                    <option value="CHAdeMO">CHAdeMO</option>
+                    <option value="GB/T">GB/T</option>
+                </select>
+            </div>
+
+            <h3>Battery Details</h3>
+            <div class="form-group">
+                <label for="batteryCapacity">Battery Capacity (kWh):</label>
+                <input type="number" id="batteryCapacity" value="60" min="1" max="200" required>
+            </div>
+            <div class="form-group">
+                <label for="initialBatteryLevel">Initial Battery Level (%):</label>
+                <input type="number" id="initialBatteryLevel" min="0" max="100" required>
+            </div>
+            <div class="form-group">
+                <label for="targetBatteryLevel">Target Battery Level (%):</label>
+                <input type="number" id="targetBatteryLevel" min="0" max="100" required>
+            </div>
+
+            <div class="chargingCost" id="chargingEstimate" style="display: none; margin-top: 15px; ; padding: 10px; background:rgba(0, 0, 0, .2); border-radius: 5px;">
+                <h4>Charging Estimates</h4>
+                <p>Estimated Time: <span id="estimatedTime">-</span></p>
+                <p>Estimated Cost: ₹<span id="estimatedCost">-</span></p>
+            </div>
+
+            <button type="submit" class="save-btn add-vehicle-btn" aria-label="Add Vehicle">Add Vehicle</button>
+        </form>
+    </div>
+</div>
+
+
+        <div id="Modal" class="modal" role="dialog" aria-labelledby="updateModalTitle">
+        <div class="modal-content">
+            <span class="close" onclick="closeModal()" aria-label="Close Update Station Modal">&times;</span>
+            <h2 id="updateModalTitle">Update Charging Station Details</h2>
+            
+            <form id="updateForm">
+                <label>Station Name:</label>
+                <input type="text" id="stationName" value="{{ station.name }}" placeholder="Station name" required>
+
+                <label>Operator Name:</label>
+                <input type="text" id="operatorName" value="{{ station.operator }}" placeholder="operator Name" required>
+
+                <label>Charging Type:</label>
+                <select id="stationChargingType" required>
+                    <option value="">Select Charging Type</option>
+                    <option value="AC Type 1" {% if station.chargingType == 'AC Type 1' %}selected{% endif %}>AC Type 1 (₹15/kWh)</option>
+                    <option value="AC Type 2" {% if station.chargingType == 'AC Type 2' %}selected{% endif %}>AC Type 2 (₹18/kWh)</option>
+                    <option value="CCS" {% if station.chargingType == 'CCS' %}selected{% endif %}>CCS (₹25/kWh)</option>
+                    <option value="CHAdeMO" {% if station.chargingType == 'CHAdeMO' %}selected{% endif %}>CHAdeMO (₹25/kWh)</option>
+                    <option value="GB/T" {% if station.chargingType == 'GB/T' %}selected{% endif %}>GB/T (₹20/kWh)</option>
+                </select>
+
+                <label>Location:</label>
+                <input type="text" id="location" value="{{ station.location }}" placeholder="Location" required>
+
+                <label>Total Slots:</label>
+                <input type="number" id="totalSlots" min="1" value="{{ station.total_slots }}" placeholder="Number of slots" required>
+
+
+                <label>Charging Rate (₹/kWh):</label>
+                <input type="number" id="chargingRate" min="1" value="{{ station.charging_rate }}" placeholder="Charging rate" required>
+
+                <label>Location on Map:</label>
+                <input id="map-search" type="text" placeholder="Search for location..." style="width:100%;margin-bottom:10px;padding:8px;border-radius:4px;border:1px solid #ccc;">
+                <div id="map" style="height: 300px; width: 100%; margin-bottom: 20px; border-radius: 5px;"></div>
+                <input type="hidden" id="latitude" name="latitude" value="{{ station.latitude if station.latitude else '' }}">
+                <input type="hidden" id="longitude" name="longitude" value="{{ station.longitude if station.longitude else '' }}">
+
+                <div class="button-group">
+                    <button type="button" class="close-btn" onclick="closeModal()" aria-label="Close">Close</button>
+                    <button type="submit" class="save-btn" aria-label="Save Changes">Save Changes</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+
+<script>
+    // Track form changes
+    let formChanged = false;
+    const form = document.getElementById("updateForm");
+    let initialFormData = new FormData(form);
+
+    // Add event listeners to all form inputs to track changes
+    form.querySelectorAll('input').forEach(input => {
+        input.addEventListener('change', () => {
+            formChanged = true;
+        });
+    });
+
+    // Function to update charging rate based on charging type
+    function updateChargingRate(selectElement) {
+        const chargingRates = {
+            'AC Type 1': 15,
+            'AC Type 2': 18,
+            'CCS': 25,
+            'CHAdeMO': 25,
+            'GB/T': 20,
+        };
+        
+        const selectedType = selectElement.value;
+        const chargingRateInput = document.getElementById('chargingRate');
+        if (selectedType && chargingRates[selectedType]) {
+            chargingRateInput.value = chargingRates[selectedType];
+            formChanged = true;
+        } else {
+            chargingRateInput.value = ''; // Clear if no type selected or type not found
+        }
+    }
+
+    // Add event listener for charging type changes
+    document.getElementById('stationChargingType').addEventListener('change', function() {
+        updateChargingRate(this);
+    });
+
+    // Initial call to set rate if a type is already selected (e.g., on page load from existing data)
+    document.addEventListener('DOMContentLoaded', function() {
+        const stationChargingTypeSelect = document.getElementById('stationChargingType');
+        updateChargingRate(stationChargingTypeSelect);
+    });
+
+    // Function to check for unsaved changes
+    function hasUnsavedChanges() {
+        if (!formChanged) return false;
+        
+        const currentFormData = new FormData(form);
+        for (let [key, value] of currentFormData.entries()) {
+            if (initialFormData.get(key) !== value) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    // Modified closeModal function with confirmation
+    function closeModal() {
+        if (hasUnsavedChanges()) {
+            if (confirm("You have unsaved changes. Are you sure you want to close without saving?")) {
+                document.getElementById("Modal").style.display = "none";
+                formChanged = false;
+            }
+        } else {
+            document.getElementById("Modal").style.display = "none";
+        }
+    }
+
+    // Reset form change tracking when modal is opened
+    function openModal() {
+        document.getElementById("Modal").style.display = "flex";
+        formChanged = false;
+        // Update initial form data
+        initialFormData = new FormData(form);
+        trapFocus(document.getElementById("Modal"));
+    }
+
+    // Target the save button specifically within the update form
+    document.querySelector("#updateForm .save-btn").addEventListener("click", async function(event) {
+        event.preventDefault();
+        formChanged = false;
+
+        const submitBtn = this; // Reference to the button
+        toggleLoadingState(submitBtn, true); // Show loading state
+
+        let stationName = document.getElementById("stationName").value;
+        let operatorName = document.getElementById("operatorName").value;
+        let chargingType = document.getElementById("stationChargingType").value;
+        let location = document.getElementById("location").value;
+        let totalSlots = document.getElementById("totalSlots").value;
+        let chargingRate = document.getElementById("chargingRate").value;
+        let latitude = document.getElementById("latitude").value;
+        let longitude = document.getElementById("longitude").value;
+
+        const requestData = {
+            stationName: stationName,
+            operatorName: operatorName,
+            chargingType: chargingType,
+            location: location,
+            totalSlots: totalSlots,
+            chargingRate: chargingRate,
+            latitude: latitude,
+            longitude: longitude
+        };
+
+        console.log("Sending station update data:", requestData);  // Debug log
+
+        try {
+            const response = await fetch("/update_station", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(requestData)
+            });
+
+            console.log("Raw response:", response);
+            if (!response.ok) {
+                const text = await response.text();
+                throw new Error(text);
+            }
+            const data = await response.json();
+
+            console.log("Parsed data:", data);
+            if (data.message) {
+                // Update the displayed values directly
+                document.querySelector(".dashboard-left h2").innerHTML = `Welcome,<br> ${stationName} <br>Charging Station`;
+                document.getElementById("operator-display").innerHTML = `<strong>Operator:</strong> ${operatorName}`;
+                document.getElementById("charging-type-display").innerHTML = `<strong>Charging Type:</strong> ${chargingType}`;
+                document.getElementById("location-display").innerHTML = `<strong>Location:</strong> ${location}`;
+                document.getElementById("total-slots-display").innerHTML = `<strong>Total Slots:</strong> ${totalSlots}`;
+                document.getElementById("charging-rate-display").innerHTML = `<strong>Charging Rate:</strong> ₹${chargingRate} per kWh`;
+
+                // Close the modal
+                document.getElementById("Modal").style.display = "none";
+                
+                // Show success message
+                const successMessage = document.createElement('div');
+                successMessage.style.cssText = `
+                    position: fixed;
+                    top: 20px;
+                    right: 20px;
+                    background-color: #4CAF50;
+                    color: white;
+                    padding: 15px 25px;
+                    border-radius: 5px;
+                    z-index: 1000;
+                    box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+                `;
+                successMessage.textContent = "Changes saved successfully!";
+                document.body.appendChild(successMessage);
+
+                setTimeout(() => {
+                    successMessage.remove();
+                }, 3000);
+
+                // Re-initialize the display map to reflect updated coordinates
+                if (typeof google !== 'undefined' && typeof google.maps !== 'undefined') {
+                    initDisplayMap(); 
+                } else {
+                    console.warn("Google Maps API not loaded, cannot re-initialize display map.");
+                }
+
+            } else {
+                alert(data.error);
+            }
+        } catch (error) {
+            console.error("Update Error:", error);
+            alert("An error occurred while updating. Please try again." + error.message);
+        } finally {
+            toggleLoadingState(submitBtn, false); // Hide loading state
+        }
+    });
+
+    // Close modal when clicking outside
+    window.onclick = function(event) {
+        let updateModal = document.getElementById("Modal");
+        let vehicleModal = document.getElementById("vehicleModal");
+
+        if (event.target === updateModal) {
+            closeModal();
+        }
+        if (event.target === vehicleModal) {
+            closeVehicleModal();
+        }
+    };
+
+    // Open the Add Vehicle Modal
+    function openVehicleModal() {
+        document.getElementById("vehicleModal").style.display = "flex";
+        trapFocus(document.getElementById("vehicleModal"));
+    }
+
+    // Close the Add Vehicle Modal
+    function closeVehicleModal() {
+        document.getElementById("vehicleModal").style.display = "none";
+    }
+
+    // Add this function to dynamically refresh the vehicle table
+    async function refreshVehicleTable() {
+        try {
+            // Fetch the latest vehicles data from the dashboard endpoint
+            const response = await fetch("/dashboard"); // Assuming this endpoint returns the full dashboard HTML, or we can make a dedicated /api/vehicles endpoint
+            const html = await response.text();
+
+            // Create a temporary DOM element to parse the HTML
+            const parser = new DOMParser();
+            const doc = parser.parseFromString(html, 'text/html');
+
+            // Find the table body from the parsed HTML
+            const newTableBody = doc.querySelector(".dashboard-right table tbody");
+            const currentTableBody = document.querySelector(".dashboard-right table tbody");
+
+            if (newTableBody && currentTableBody) {
+                // Replace the old table body with the new one
+                currentTableBody.innerHTML = newTableBody.innerHTML;
+            } else {
+                console.error("Could not find table body elements for refresh.");
+            }
+
+
+            // Update slot warning
+            const slotWarning = document.getElementById("slot-warning");
+            const newSlotWarning = doc.getElementById("slot-warning");
+            if (slotWarning && newSlotWarning) {
+                slotWarning.style.display = newSlotWarning.style.display;
+                slotWarning.innerHTML = newSlotWarning.innerHTML; // To get updated text if any
+            }
+
+
+            console.log("Vehicle table refreshed successfully.");
+
+        } catch (error) {
+            console.error("Error refreshing vehicle table:", error);
+            alert("Failed to refresh vehicle list. Please refresh the page manually.");
+        }
+    }
+
+    document.getElementById("addVehicleForm").addEventListener("submit", async function(event) {
+        event.preventDefault();
+
+        const addVehicleBtn = this.querySelector('.add-vehicle-btn'); // Reference to the add vehicle button
+        toggleLoadingState(addVehicleBtn, true); // Show loading state
+
+        const vehicleNumberInput = document.getElementById("vehicleNumber");
+        const initialBatteryLevelInput = document.getElementById("initialBatteryLevel");
+        const targetBatteryLevelInput = document.getElementById("targetBatteryLevel");
+        const arrivalTimeInput = document.getElementById("arrivalTime");
+        const vehicleChargingTypeInput = document.getElementById("vehicleChargingType");
+        const batteryCapacityInput = document.getElementById("batteryCapacity");
+
+        const vehicleNumber = vehicleNumberInput.value.trim();
+        const arrivalTime = arrivalTimeInput.value;
+        const chargingType = vehicleChargingTypeInput.value;
+        const initialBatteryLevel = parseFloat(initialBatteryLevelInput.value);
+        const targetBatteryLevel = parseFloat(targetBatteryLevelInput.value);
+        const batteryCapacity = parseFloat(batteryCapacityInput.value);
+
+        const vehicleNumberRegex = /^[A-Z]{2}\d{2}[A-Z]{1,2}\d{4}$/;
+
+        // Clear previous error messages and styles
+        document.querySelectorAll('.error-message').forEach(el => el.remove());
+        vehicleNumberInput.classList.remove('invalid-input');
+        initialBatteryLevelInput.classList.remove('invalid-input');
+        targetBatteryLevelInput.classList.remove('invalid-input');
+        arrivalTimeInput.classList.remove('invalid-input');
+        vehicleChargingTypeInput.classList.remove('invalid-input');
+        batteryCapacityInput.classList.remove('invalid-input');
+
+        let isValid = true;
+
+        if (!vehicleNumber) {
+            displayError(vehicleNumberInput, "Vehicle number is required.");
+            isValid = false;
+        } else if (!vehicleNumberRegex.test(vehicleNumber)) {
+            displayError(vehicleNumberInput, "Invalid vehicle number format (e.g., MH12AB1234)");
+            isValid = false;
+        }
+
+        if (!arrivalTime) {
+            displayError(arrivalTimeInput, "Arrival time is required.");
+            isValid = false;
+        }
+
+        if (!chargingType) {
+            displayError(vehicleChargingTypeInput, "Charging type is required.");
+            isValid = false;
+        }
+
+        if (isNaN(initialBatteryLevel) || initialBatteryLevel < 0 || initialBatteryLevel > 100) {
+            displayError(initialBatteryLevelInput, "Please enter a valid initial battery level (0-100%).");
+            isValid = false;
+        }
+
+        if (isNaN(targetBatteryLevel) || targetBatteryLevel < 0 || targetBatteryLevel > 100) {
+            displayError(targetBatteryLevelInput, "Please enter a valid target battery level (0-100%).");
+            isValid = false;
+        }
+
+        if (initialBatteryLevel !== undefined && targetBatteryLevel !== undefined && targetBatteryLevel <= initialBatteryLevel) {
+            displayError(targetBatteryLevelInput, "Target battery level must be greater than initial battery level.");
+            isValid = false;
+        }
+
+        if (isNaN(batteryCapacity) || batteryCapacity <= 0) {
+            displayError(batteryCapacityInput, "Please enter a valid battery capacity (e.g., 60 kWh).");
+            isValid = false;
+        }
+
+        if (!isValid) {
+            toggleLoadingState(addVehicleBtn, false); // Hide loading state if validation fails
+            return; // Stop form submission if validation fails
+        }
+
+        const requestData = {
+            vehicleNumber: vehicleNumber,
+            arrivalTime: arrivalTime,
+            chargingType: chargingType,
+            initialBatteryLevel: initialBatteryLevel,
+            targetBatteryLevel: targetBatteryLevel,
+            batteryCapacity: batteryCapacity
+        };
+
+        try {
+            const response = await fetch("/add_vehicle", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(requestData)
+            });
+            const data = await response.json();
+
+            if (data.message) {
+                closeVehicleModal(); // Close modal
+                
+                // Refresh the entire table after a successful add
+                await refreshVehicleTable();
+
+                // Show success message
+                const successMessage = document.createElement('div');
+                successMessage.style.cssText = `
+                    position: fixed;
+                    top: 20px;
+                    right: 20px;
+                    background-color: #4CAF50;
+                    color: white;
+                    padding: 15px 25px;
+                    border-radius: 5px;
+                    z-index: 1000;
+                    box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+                `;
+                successMessage.textContent = "Vehicle added successfully!";
+                document.body.appendChild(successMessage);
+
+                setTimeout(() => {
+                    successMessage.remove();
+                }, 3000);
+
+                // Clear the form
+                document.getElementById("addVehicleForm").reset();
+                document.getElementById('chargingEstimate').style.display = 'none';
+            } else {
+                alert(data.error);
+            }
+        } catch (error) {
+            console.error("Error:", error);
+            alert("An error occurred while adding the vehicle. Please try again.");
+        } finally {
+            toggleLoadingState(addVehicleBtn, false); // Hide loading state
+        }
+    });
+
+    // Update removeVehicle function to handle slot updates and refresh table
+    async function removeVehicle(vehicleId) {
+        // Show confirmation dialog before proceeding
+        if (!window.confirm('Are you sure you want to remove this vehicle?')) {
+            return;
+        }
+        try {
+            const response = await fetch("/remove_vehicle", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ vehicle_id: vehicleId })
+            });
+            const data = await response.json();
+
+            if (data.message) {
+                // Refresh the entire table after a successful remove
+                await refreshVehicleTable();
+
+                // Show success message
+                const successMessage = document.createElement('div');
+                successMessage.style.cssText = `
+                    position: fixed;
+                    top: 20px;
+                    right: 20px;
+                    background-color: #4CAF50;
+                    color: white;
+                    padding: 15px 25px;
+                    border-radius: 5px;
+                    z-index: 1000;
+                    box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+                `;
+                successMessage.textContent = "Vehicle removed successfully!";
+                document.body.appendChild(successMessage);
+
+                setTimeout(() => {
+                    successMessage.remove();
+                }, 3000);
+            }
+        } catch (error) {
+            console.error("Error:", error);
+            alert("An error occurred while removing the vehicle. Please try again.");
+        }
+    }
+
+    // This part ensures that if you navigate away with unsaved changes, you get a warning
+    window.onbeforeunload = function() {
+        if (formChanged) {
+            return "You have unsaved changes. Do you want to leave without saving?";
+        }
+    };
+
+    // Ensure the update modal is hidden when the page loads
+    document.addEventListener('DOMContentLoaded', function() {
+        document.getElementById("Modal").style.display = "none";
+        // Debug log (already present) check for google and google.maps
+        console.log("DOMContentLoaded: google defined?", typeof google !== 'undefined', "google.maps defined?", typeof google.maps !== 'undefined');
+        refreshVehicleTable(); // Initial load of the table after DOM is ready
+    });
+
+    let map, marker;
+    let displayMap, displayMarker;
+
+    function initMap() {
+        // Default to a central location if station coords not available
+        const defaultLat = parseFloat(document.getElementById('latitude').value) || 26.9124;
+        const defaultLng = parseFloat(document.getElementById('longitude').value) || 75.7873;
+        const initialLocation = { lat: defaultLat, lng: defaultLng };
+
+        map = new google.maps.Map(document.getElementById('map'), {
+            center: initialLocation,
+            zoom: 12,
+            mapTypeControl: false, // Optional: hide map type controls
+            streetViewControl: false, // Optional: hide street view control
+            fullscreenControl: false, // Optional: hide fullscreen control
+        });
+
+        marker = new google.maps.Marker({
+            position: initialLocation,
+            map: map,
+            draggable: true,
+            title: "Drag to set location",
+        });
+
+        // Update lat/lng inputs when marker is dragged
+        marker.addListener('dragend', function() {
+            const newPosition = marker.getPosition();
+            document.getElementById('latitude').value = newPosition.lat();
+            document.getElementById('longitude').value = newPosition.lng();
+            formChanged = true; // Mark form as changed
+
+            // Update the display map marker position as well
+            if (displayMarker) {
+                displayMarker.setPosition(newPosition);
+            }
+        });
+
+        // Update lat/lng inputs when map is clicked
+        map.addListener('click', function(event) {
+            marker.setPosition(event.latLng);
+            document.getElementById('latitude').value = event.latLng.lat();
+            document.getElementById('longitude').value = event.latLng.lng();
+            formChanged = true; // Mark form as changed
+
+            // Update the display map marker position as well
+            if (displayMarker) {
+                displayMarker.setPosition(event.latLng);
+            }
+        });
+
+        // Re-center map and marker when modal opens
+        document.getElementById('Modal').addEventListener('transitionend', function() {
+            if (this.style.display === 'flex') { // Check if modal is visible
+                google.maps.event.trigger(map, 'resize');
+                // Update map center with current station data when modal opens
+                const currentLat = parseFloat(document.getElementById('latitude').value) || 26.9124;
+                const currentLng = parseFloat(document.getElementById('longitude').value) || 75.7873;
+                const currentPosition = { lat: currentLat, lng: currentLng };
+                map.setCenter(currentPosition);
+                marker.setPosition(currentPosition);
+            }
+        });
+        initDisplayMap(); // Added: Initialize the display map after the main map is ready
+
+        // Add Places Autocomplete search box
+        const input = document.getElementById('map-search');
+        if (input) {
+            const autocomplete = new google.maps.places.Autocomplete(input);
+            autocomplete.bindTo('bounds', map);
+
+            autocomplete.addListener('place_changed', function() {
+                const place = autocomplete.getPlace();
+                if (!place.geometry) {
+                    alert("No details available for input: '" + place.name + "'");
+                    return;
+                }
+
+                // If the place has a geometry, then present it on a map.
+                if (place.geometry.viewport) {
+                    map.fitBounds(place.geometry.viewport);
+                } else {
+                    map.setCenter(place.geometry.location);
+                    map.setZoom(17);
+                }
+                marker.setPosition(place.geometry.location);
+
+                // Update hidden latitude/longitude fields
+                document.getElementById('latitude').value = place.geometry.location.lat();
+                document.getElementById('longitude').value = place.geometry.location.lng();
+                formChanged = true;
+            });
+        }
+    }
+
+    // Function to initialize the display map on the dashboard
+    function initDisplayMap() {
+        const displayMapElement = document.getElementById('display-map');
+        if (!displayMapElement) {
+            console.error("Display map element not found!");
+            return;
+        }
+
+        // Use current coordinates from the form fields, not Jinja template
+        const stationLat = parseFloat(document.getElementById('latitude').value) || 26.9124;
+        const stationLng = parseFloat(document.getElementById('longitude').value) || 75.7873;
+        const stationLocation = { lat: stationLat, lng: stationLng };
+
+        // If map exists, just update its center and marker
+        if (displayMap) {
+            displayMap.setCenter(stationLocation);
+            if (displayMarker) {
+                displayMarker.setPosition(stationLocation);
+            } else {
+                displayMarker = new google.maps.Marker({
+                    position: stationLocation,
+                    map: displayMap,
+                    draggable: false,
+                    title: "Charging Station Location"
+                });
+            }
+            google.maps.event.trigger(displayMap, 'resize');
+            return;
+        }
+
+        // Create new map if it doesn't exist
+        displayMap = new google.maps.Map(displayMapElement, {
+            center: stationLocation,
+            zoom: 15,
+            disableDefaultUI: true,
+            gestureHandling: 'none',
+            zoomControl: false
+        });
+
+        displayMarker = new google.maps.Marker({
+            position: stationLocation,
+            map: displayMap,
+            draggable: false,
+            title: "Charging Station Location"
+        });
+
+        google.maps.event.trigger(displayMap, 'resize');
+    }
+
+    // Existing openModal function, ensure it calls initMap if map not initialized
+    const originalOpenModal = openModal;
+    openModal = function() {
+        originalOpenModal();
+        // Check if google maps API is loaded and the map variable itself is not yet initialized
+        if (typeof google !== 'undefined' && typeof google.maps !== 'undefined' && !map) {
+            initMap(); // Initialize map only once if not already
+        }
+    };
+
+    // Add this to your existing JavaScript
+    function updateChargingEstimate() {
+        const batteryCapacity = parseFloat(document.getElementById('batteryCapacity').value);
+        const initialLevel = parseFloat(document.getElementById('initialBatteryLevel').value);
+        const targetLevel = parseFloat(document.getElementById('targetBatteryLevel').value);
+        const chargingType = document.getElementById('vehicleChargingType').value;
+
+        const chargingSpeeds = {
+            "AC Type 1": 7.4, "AC Type 2": 22.0, "CCS": 150.0, "CHAdeMO": 62.5, "GB/T": 120.0
+        };
+        const chargingRates = {
+            "AC Type 1": 15, "AC Type 2": 18, "CCS": 25, "CHAdeMO": 25, "GB/T": 20
+        };
+        const chargingEfficiency = {
+            "AC Type 1": 0.85, "AC Type 2": 0.88, "CCS": 0.92, "CHAdeMO": 0.92, "GB/T": 0.90
+        };
+        const k = 1.6; // Logistic model constant, matches backend
+
+        function evChargingTimeLogistic(currentPercent, targetPercent, chargerPowerKw, batteryCapacityKwh, chargingEfficiency, k) {
+            // Mirror backend Python logic
+            if (!(0 <= currentPercent && currentPercent <= 100 && 0 <= targetPercent && targetPercent <= 100)) {
+                return 0.0;
+            }
+            if (currentPercent >= targetPercent) {
+                return 0.0;
+            }
+            if (currentPercent === 0) {
+                currentPercent = 0.1;
+            }
+            if (targetPercent === 100) {
+                targetPercent = 99.9;
+            }
+            let unitTime;
+            try {
+                unitTime = (1 / k) * Math.log(
+                    (targetPercent * (100 - currentPercent)) /
+                    (currentPercent * (100 - targetPercent))
+                );
+            } catch (e) {
+                // Fallback to linear approximation
+                const linearFullChargeTime = batteryCapacityKwh / (chargerPowerKw * chargingEfficiency);
+                return linearFullChargeTime * (targetPercent - currentPercent) / 100 * 60; // minutes
+            }
+            const linearFullChargeTime = batteryCapacityKwh / (chargerPowerKw * chargingEfficiency);
+            const logisticScale = linearFullChargeTime / 7.43;
+            return unitTime * logisticScale * 60; // Convert hours to minutes
+        }
+
+        if (
+            batteryCapacity && !isNaN(batteryCapacity) &&
+            initialLevel !== undefined && !isNaN(initialLevel) &&
+            targetLevel !== undefined && !isNaN(targetLevel) &&
+            chargingType && chargingSpeeds[chargingType]
+        ) {
+            let adjustedInitial = initialLevel;
+            let adjustedTarget = targetLevel;
+            if (adjustedInitial === 0) adjustedInitial = 0.1;
+            if (adjustedTarget === 100) adjustedTarget = 99.9;
+
+            const chargerPowerKw = chargingSpeeds[chargingType];
+            const efficiency = chargingEfficiency[chargingType] || 0.85;
+            const chargingRate = chargingRates[chargingType] || 15;
+
+            // Charging time in minutes using logistic model
+            let chargingTimeMinutes = evChargingTimeLogistic(
+                adjustedInitial,
+                adjustedTarget,
+                chargerPowerKw,
+                batteryCapacity,
+                efficiency,
+                k
+            );
+            if (!isFinite(chargingTimeMinutes) || chargingTimeMinutes < 0) {
+                // Fallback to linear if math error
+                const batteryPercentageToCharge = adjustedTarget - adjustedInitial;
+                const energyNeededKwh = (batteryPercentageToCharge / 100) * batteryCapacity;
+                chargingTimeMinutes = (energyNeededKwh / chargerPowerKw) * 60;
+            }
+
+            // Cost calculation (matches backend)
+            const batteryPercentageToCharge = adjustedTarget - adjustedInitial;
+            const energyNeededKwh = (batteryPercentageToCharge / 100) * batteryCapacity;
+            const actualEnergyConsumed = energyNeededKwh / efficiency;
+            const chargingCost = actualEnergyConsumed * chargingRate;
+
+            // UI update
+            let estimatedTimeMinutes = Math.round(chargingTimeMinutes);
+            let estimatedTimeDisplay;
+            if (estimatedTimeMinutes >= 60) {
+                const hours = Math.floor(estimatedTimeMinutes / 60);
+                const minutes = estimatedTimeMinutes % 60;
+                estimatedTimeDisplay = `${hours} hrs ${minutes} min`;
+            } else {
+                estimatedTimeDisplay = `${estimatedTimeMinutes} min`;
+            }
+            document.getElementById('estimatedTime').textContent = estimatedTimeDisplay;
+            document.getElementById('estimatedCost').textContent = Math.round(chargingCost);
+            document.getElementById('chargingEstimate').style.display = 'block';
+        } else {
+            document.getElementById('chargingEstimate').style.display = 'none';
+        }
+    }
+
+    // Add event listeners for real-time updates
+    document.getElementById('batteryCapacity').addEventListener('input', updateChargingEstimate);
+    document.getElementById('initialBatteryLevel').addEventListener('input', updateChargingEstimate);
+    document.getElementById('targetBatteryLevel').addEventListener('input', updateChargingEstimate);
+    document.getElementById('vehicleChargingType').addEventListener('change', updateChargingEstimate);
+
+    window.initMap = initMap;
+
+    // Function to sort the vehicle table by arrival time
+    function sortVehicleTableByArrivalTime() {
+        const tableBody = document.querySelector(".dashboard-right table tbody");
+        const rows = Array.from(tableBody.querySelectorAll("tr"));
+
+        rows.sort((a, b) => {
+            // Get arrival time as string (e.g., "13:30")
+            const timeA = a.cells[2].textContent.trim();
+            const timeB = b.cells[2].textContent.trim();
+
+            // Convert to minutes since midnight for comparison
+            const [hA, mA] = timeA.split(":").map(Number);
+            const [hB, mB] = timeB.split(":").map(Number);
+            const minutesA = hA * 60 + mA;
+            const minutesB = hB * 60 + mB;
+
+            return minutesA - minutesB;
+        });
+
+        // Re-append sorted rows and update index column
+        rows.forEach((row, idx) => {
+            row.cells[0].textContent = idx + 1;
+            tableBody.appendChild(row);
+        });
+    }
+
+    // Helper function to show/hide loading spinner and disable/enable button
+    function toggleLoadingState(button, isLoading) {
+        console.log(`toggleLoadingState called for button: ${button.id || button.className}, isLoading: ${isLoading}`);
+        if (isLoading) {
+            button.classList.add('loading');
+            button.setAttribute('disabled', 'true');
+            const spinnerSpan = document.createElement('span');
+            spinnerSpan.className = 'spinner';
+            button.appendChild(spinnerSpan);
+        } else {
+            button.classList.remove('loading');
+            button.removeAttribute('disabled');
+            const spinner = button.querySelector('.spinner');
+            if (spinner) {
+                spinner.remove();
+            }
+        }
+    }
+
+    function trapFocus(modal) {
+        const focusableElements = modal.querySelectorAll('button, [href], input, select, textarea');
+        const firstElement = focusableElements[0];
+        const lastElement = focusableElements[focusableElements.length - 1];
+
+        modal.addEventListener('keydown', function(e) {
+            if (e.key === 'Tab') {
+                if (e.shiftKey) { // Shift + Tab
+                    if (document.activeElement === firstElement || document.activeElement === modal) {
+                        e.preventDefault();
+                        lastElement.focus();
+                    }
+                } else { // Tab
+                    if (document.activeElement === lastElement) {
+                        e.preventDefault();
+                        firstElement.focus();
+                    }
+                }
+            } else if (e.key === 'Escape') {
+                // Optionally close modal on Escape key
+                if (modal.id === 'vehicleModal') {
+                    closeVehicleModal();
+                } else if (modal.id === 'Modal') {
+                    closeModal();
+                }
+            }
+        });
+    }
+
+    document.getElementById("Modal").addEventListener('transitionend', function() {
+        if (this.style.display === 'flex') {
+            trapFocus(this);
+            // Optionally focus the first focusable element when modal opens
+            const firstFocusable = this.querySelector('button, [href], input, select, textarea');
+            if (firstFocusable) {
+                firstFocusable.focus();
+            }
+        }
+    });
+
+    document.getElementById("vehicleModal").addEventListener('transitionend', function() {
+        if (this.style.display === 'flex') {
+            trapFocus(this);
+            // Optionally focus the first focusable element when modal opens
+            const firstFocusable = this.querySelector('button, [href], input, select, textarea');
+            if (firstFocusable) {
+                firstFocusable.focus();
+            }
+        }
+    });
+
+</script>
+
+<script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+<script src="/templates/chngs.js"></script>
+<script>
+
+
+// --- Booking Result Modal ---
+function showBookingResult(result) {
+    let html = '';
+    if (result.status === 'confirmed') {
+        html += `<p><strong>Booking Confirmed!</strong></p>`;
+        html += `<p>Assigned Slot: <strong>${result.assigned_slot}</strong></p>`;
+        html += `<p>Scheduled Start: <strong>${result.scheduled_start_time}</strong></p>`;
+        html += `<p>Scheduled End: <strong>${result.scheduled_end_time}</strong></p>`;
+        html += `<p>Wait Time: <strong>${result.wait_time_minutes}</strong> min</p>`;
+        html += `<p>Priority Score: <strong>${result.priority_score}</strong></p>`;
+    } else {
+        html += `<p style="color:red"><strong>Booking Failed:</strong> ${result.message || 'Unknown error.'}</p>`;
+    }
+    document.getElementById('booking-result-details').innerHTML = html;
+    document.getElementById('bookingResultModal').style.display = 'flex';
+}
+function closeBookingResultModal() {
+    document.getElementById('bookingResultModal').style.display = 'none';
+}
+
+// --- Example: Hook to booking form (replace with your actual booking form logic) ---
+// document.getElementById('yourBookingForm').onsubmit = function(e) {
+//     e.preventDefault();
+//     // Collect form data...
+//     axios.post('/create_booking', bookingData)
+//         .then(res => showBookingResult(res.data))
+//         .catch(err => showBookingResult({status: 'error', message: err.response?.data?.message || 'Booking failed.'}));
+// };
+
+// On page load, fetch queue (replace '{{ station.id }}' with actual station id variable)
+document.addEventListener('DOMContentLoaded', function() {
+    fetchAndRenderStationQueue('{{ station.id }}');
+});
+</script>
+</body>
+</html>
