@@ -56,7 +56,7 @@ def ev_charging_time(current_percent, target_percent, charger_power_kw, battery_
     return charge_time_hours
 
 app = Flask(__name__, static_folder='static')
-app.secret_key = "e9f1a3b7c2e84d1d86e7df0c4a6789f120cbb89e5f843f3c74a8a776bc9ff2a5"  # Required for Flask sessions
+app.secret_key = os.environ.get("FLASK_SECRET_KEY", "fallback_secret_for_dev_only") # Required for Flask sessions
 
 print("Initializing Firebase...")  # Debug print
 # Initialize Firebase
