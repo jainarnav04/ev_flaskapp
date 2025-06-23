@@ -249,7 +249,8 @@ def dashboard():
         total_slots = station_data.get('totalSlots') or station_data.get('total_slots')
         charging_count = sum(1 for v in vehicles if v.get('status', '').upper() == 'CHARGING')
         available_slots = max(int(total_slots) - charging_count, 0) if total_slots else 0
-        return render_template("dashboard.html", station=station_data, vehicles=vehicles, slot_free_time=slot_free_time, available_slots=available_slots)  # Pass vehicles data and dynamic available_slots
+        google_maps_api_key = os.environ.get("GOOGLE_MAPS_API_KEY")
+        return render_template("dashboard.html", station=station_data, vehicles=vehicles, slot_free_time=slot_free_time, available_slots=available_slots, google_maps_api_key=google_maps_api_key)  # Pass vehicles data and dynamic available_slotsa and dynamic available_slots
     else:
         return "Error: Station not found", 404
 
