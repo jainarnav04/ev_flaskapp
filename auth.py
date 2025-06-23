@@ -36,7 +36,7 @@ class CalculationError(InvalidUsage):
 
 print("Starting application...")  # Debug print
 
-def ev_charging_time(current_percent, target_percent, charger_power_kw, battery_capacity_kwh=60,
+def ev_charging_time(current_percent, target_percent, charger_power_kw, battery_capacity_kwh,
                      charging_efficiency=0.9, k=1.6):
     """Calculate charging time using a modified logistic model, handling edge cases"""
     if not (0 <= current_percent <= 100 and 0 <= target_percent <= 100):
@@ -50,19 +50,10 @@ def ev_charging_time(current_percent, target_percent, charger_power_kw, battery_
     if target_percent == 100:
         target_percent = 99.9  # Avoid division by zero
 
-    try:
-        unit_time = (1 / k) * math.log(
-            (target_percent * (100 - current_percent)) /
-            (current_percent * (100 - target_percent))
-        )
-    except (ZeroDivisionError, ValueError):
-        # Fallback to linear approximation if mathematical errors occur
-        linear_full_charge_time = battery_capacity_kwh / (charger_power_kw * charging_efficiency)
-        return linear_full_charge_time * (target_percent - current_percent) / 100
-
-    linear_full_charge_time = battery_capacity_kwh / (charger_power_kw * charging_efficiency)
-    logistic_scale = linear_full_charge_time / 7.43
-    return unit_time * logistic_scale
+    percent_to_charge = target_percent - current_percent
+    energy_needed_kwh = (percent_to_charge / 100) * battery_capacity_kwh
+    charge_time_hours = energy_needed_kwh / (charger_power_kw * 0.9)
+    return charge_time_hours
 
 app = Flask(__name__, static_folder='static')
 app.secret_key = "e9f1a3b7c2e84d1d86e7df0c4a6789f120cbb89e5f843f3c74a8a776bc9ff2a5"  # Required for Flask sessions
