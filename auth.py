@@ -37,7 +37,7 @@ class CalculationError(InvalidUsage):
 print("Starting application...")  # Debug print
 
 def ev_charging_time(current_percent, target_percent, charger_power_kw, battery_capacity_kwh,
-                     charging_efficiency=0.9, k=1.6):
+                     charging_efficiency=0.9):
     """Calculate charging time using a modified logistic model, handling edge cases"""
     if not (0 <= current_percent <= 100 and 0 <= target_percent <= 100):
         raise ValueError("Percentages must be between 0 and 100")
@@ -52,7 +52,7 @@ def ev_charging_time(current_percent, target_percent, charger_power_kw, battery_
 
     percent_to_charge = target_percent - current_percent
     energy_needed_kwh = (percent_to_charge / 100) * battery_capacity_kwh
-    charge_time_hours = energy_needed_kwh / (charger_power_kw * 0.9)
+    charge_time_hours = energy_needed_kwh / (charger_power_kw * charging_efficiency)
     return charge_time_hours
 
 app = Flask(__name__, static_folder='static')
