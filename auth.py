@@ -1,10 +1,44 @@
 from flask import Flask, request, jsonify, render_template, session, redirect, url_for
 import firebase_admin
-from firebase_admin import credentials, firestore
-import math  
+from firebase_admin import credentials, firestore 
 from datetime import datetime, date, timedelta # Use direct imports for datetime, date, timedelta
-import random   # Import random module
 import os
+from dotenv import load_dotenv
+load_dotenv()
+# --- SendGrid imports ---
+from sendgrid import SendGridAPIClient
+from sendgrid.helpers.mail import Mail
+
+# Flask app initialization
+app = Flask(__name__)
+
+# ==================== EMAIL OTP SENDER ====================
+def send_otp_email(receiver_email, otp):
+    """
+    Send an OTP email using SendGrid API.
+    Credentials are loaded from environment variables:
+    - SENDGRID_API_KEY
+    - EMAIL_SENDER
+    """
+    sender_email = os.environ.get("EMAIL_SENDER")
+    sendgrid_api_key = os.environ.get("SENDGRID_API_KEY")
+    if not sender_email or not sendgrid_api_key:
+        raise Exception("SendGrid credentials not set in environment variables.")
+
+    message = Mail(
+        from_email=sender_email,
+        to_emails=receiver_email,
+        subject="Your Easy Vahan Login Credentials Reset Request",
+        plain_text_content=f"Your OTP is: {otp}\n\nThis OTP is valid for 5 minutes.\nIf you did not request this, please ignore this email.\n\nThanks,\nEasy Vahan Team"
+    )
+    try:
+        sg = SendGridAPIClient(sendgrid_api_key)
+        response = sg.send(message)
+        print(f"OTP sent to {receiver_email}, status code: {response.status_code}")
+    except Exception as e:
+        print(f"Error sending OTP email: {e}")
+        raise
+
 
 # Custom Exception Classes
 class InvalidUsage(Exception):
@@ -107,16 +141,32 @@ def login_register():
             if not name or not email:
                 return jsonify({"error": "Missing station name or email!"}), 400
 
+            # Check if station ID already exists
             if doc_ref.get().exists:
                 return jsonify({"error": "Station ID already exists!"}), 400
+                
+            # Check if email is already registered (case-insensitive)
+            stations_ref = db.collection("charging_stations")
+            email_query = stations_ref.where("email", "==", email.lower().strip()).limit(1)
+            email_docs = list(email_query.stream())
+            
+            if email_docs:
+                return jsonify({"error": "This email is already registered with another station!"}), 400
 
+            # Create new station
             doc_ref.set({
                 "station_id": station_id,
                 "access_key": access_key,
                 "name": name,
-                "email": email
+                "email": email.lower().strip()
             })
-            return jsonify({"message": "Registration successful!"}), 201
+            
+            return jsonify({
+                "message": "Registration successful!",
+                "station_id": station_id,
+                "email": email.lower().strip(),
+                "name": name
+            }), 201
 
         return jsonify({"error": "Invalid action!"}), 400
 
@@ -140,8 +190,21 @@ def reset_access_key():
         station_data = doc.to_dict()
         if station_data.get("email") == email:
             print(f"Simulating sending reset link to {email} for Station ID: {station_id}")
-            # --- Email Sending Integration Placeholder ---
+            # --- Email Sending Integration ---
+            # Generate a secure random 6-digit OTP
+            import secrets
+            from datetime import timezone
+            otp = str(secrets.randbelow(900000) + 100000)
+            # Store OTP with expiration time (5 minutes from now)
+            otp_expiry = datetime.now(timezone.utc) + timedelta(minutes=5)
+            doc_ref.update({
+                'reset_otp': otp,
+                'reset_otp_expiry': otp_expiry
+            })
+            send_otp_email(email, otp)
+            print(f"Successfully sent OTP to {email}")
             # In a real application, you would integrate with an email service here
+
             # Example (using a hypothetical `send_email` function):
             # try:
             #     send_email(
@@ -154,7 +217,7 @@ def reset_access_key():
             #     print(f"Error sending email: {email_exc}")
             #     # Consider returning an error here, or logging it and proceeding
             # ---------------------------------------------
-            return jsonify({"success": True, "message": "If the Station ID and Email match, your access key has been sent to your email."}), 200
+            return jsonify({"success": True, "message": "OTP sent to your registered email. Enter the OTP to reset your access key."}), 200
         else:
             return jsonify({"success": False, "message": "Station ID and Email do not match."}), 404
     else:
@@ -315,6 +378,33 @@ def update_station():
         print(traceback.format_exc())
         raise InvalidUsage(f"An error occurred while updating station details: {str(e)}", status_code=500)
 
+def estimate_final_battery(initial_battery_level, charging_time_minutes, battery_capacity_kWh, charging_type):
+    """
+    Estimate the final battery percentage after a given charging time.
+    Args:
+        initial_battery_level (float): Initial battery percentage (0-100)
+        charging_time_minutes (int): Charging time in minutes
+        battery_capacity_kWh (float): Battery capacity in kWh
+        charging_type (str): Type of charger (AC Type 1, AC Type 2, CCS, CHAdeMO, GB/T)
+    Returns:
+        float: Estimated final battery percentage (capped at 100)
+    """
+    # Charging speeds (kW) and efficiencies by type
+    charging_speeds = {
+        "AC Type 1": 7.4, "AC Type 2": 22.0, "CCS": 150.0, "CHAdeMO": 62.5, "GB/T": 120.0
+    }
+    charging_efficiencies = {
+        "AC Type 1": 0.85, "AC Type 2": 0.88, "CCS": 0.92, "CHAdeMO": 0.92, "GB/T": 0.90
+    }
+    charger_power = charging_speeds.get(charging_type, 7.4)
+    efficiency = charging_efficiencies.get(charging_type, 0.85)
+    hours = charging_time_minutes / 60.0
+    energy_added = charger_power * hours * efficiency  # kWh
+    percent_added = (energy_added / battery_capacity_kWh) * 100
+    final_percent = initial_battery_level + percent_added
+    final_percent = min(max(final_percent, 0), 100)
+    return round(final_percent, 1)
+
 @app.route("/add_vehicle", methods=["POST"])
 def add_vehicle():
     if "station_id" not in session:
@@ -339,11 +429,15 @@ def add_vehicle():
         battery_capacity = float(data.get("batteryCapacity"))
         # Optional fields
         target_battery_level = data.get("targetBatteryLevel")
-        target_charge_minutes = data.get("targetChargeMinutes")
+        charging_time_minutes = data.get("charging_time_minutes") or data.get("targetChargeMinutes")
         target_battery_level = float(target_battery_level) if target_battery_level not in (None, "") else None
-        target_charge_minutes = int(target_charge_minutes) if target_charge_minutes not in (None, "") else None
+        charging_time_minutes = int(charging_time_minutes) if charging_time_minutes not in (None, "") else None
     except ValueError:
         raise InvalidUsage("Invalid data type for battery levels, capacity, or minutes. Must be numbers.")
+
+    # Require at least one of target_battery_level or charging_time_minutes
+    if target_battery_level is None and charging_time_minutes is None:
+        raise MissingDataError("Please provide either a target battery level or charging time in minutes.")
 
     if not vehicle_number:
         raise MissingDataError("Vehicle number cannot be empty!")
@@ -354,31 +448,81 @@ def add_vehicle():
     if not chargingType:
         raise MissingDataError("Charging Type is required!")
 
-    # At least one target must be provided
-    if target_battery_level is None and target_charge_minutes is None:
-        raise MissingDataError("Please provide either a target battery level or target minutes to charge.")
+    # Validation for target_battery_level
     if target_battery_level is not None:
         if target_battery_level < 0 or target_battery_level > 100:
             raise InvalidUsage("Target battery level must be between 0 and 100.")
         if target_battery_level <= initial_battery_level:
             raise InvalidUsage("Target battery level must be greater than initial battery level.")
-    if target_charge_minutes is not None:
-        if target_charge_minutes <= 0:
-            raise InvalidUsage("Target minutes to charge must be greater than 0.")
+    # Validation for charging_time_minutes
+    if charging_time_minutes is not None:
+        if charging_time_minutes <= 0:
+            raise InvalidUsage("Charging time in minutes must be greater than 0.")
 
     try:
         # Prioritize minutes if provided
-        if target_charge_minutes is not None:
-            charging_time_min = target_charge_minutes
-            charging_cost = None  # Could estimate cost if needed, but not enough info
-        else:
-            # Calculate charging time and cost as before
-            charging_time_min, charging_cost = calculate_charging_time(
-                initial_battery_level,
-                target_battery_level,
-                battery_capacity,
-                chargingType
+        estimated_final_battery = None
+        if charging_time_minutes is not None:
+            charging_time_min = charging_time_minutes
+            # Charging cost calculation for charging_time_minutes scenario (match frontend logic)
+            charging_speeds = {
+        "AC Type 1": 7.4,    # 7.4 kW
+        "AC Type 2": 22.0,   # 22 kW
+        "CCS": 150.0,        # 150 kW
+        "CHAdeMO": 62.5,    # 62.5 kW
+        "GB/T": 120.0        # 120 kW
+    }
+            charging_efficiency = {
+    "AC Type 1": 0.85,
+    "AC Type 2": 0.88,
+    "CCS": 0.92,
+    "CHAdeMO": 0.92,
+    "GB/T": 0.90
+}
+            charging_rates = {
+                "AC Type 1": 15, "AC Type 2": 18, "CCS": 25, "CHAdeMO": 25, "GB/T": 20
+            }
+            charger_power = charging_speeds.get(chargingType, 7.4)
+            efficiency = charging_efficiency.get(chargingType, 0.90)
+            rate = charging_rates.get(chargingType, 18)
+            hours = charging_time_minutes / 60.0
+            energy_added = charger_power * hours * efficiency
+            max_energy_addable = ((100 - initial_battery_level) / 100) * battery_capacity
+            usable_energy = min(energy_added, max_energy_addable)
+            charging_cost = (usable_energy / efficiency) * rate
+            # Calculate estimated final battery percentage
+            estimated_final_battery = estimate_final_battery(
+                initial_battery_level, charging_time_minutes, battery_capacity, chargingType
             )
+        else:
+            # Unify cost calculation for target battery scenario
+            charging_speeds = {
+                "AC Type 1": 7.4,    # 7.4 kW
+                "AC Type 2": 22.0,   # 22 kW
+                "CCS": 150.0,        # 150 kW
+                "CHAdeMO": 62.5,    # 62.5 kW
+                "GB/T": 120.0        # 120 kW
+            }
+            charging_efficiency = {
+    "AC Type 1": 0.85,
+    "AC Type 2": 0.88,
+    "CCS": 0.92,
+    "CHAdeMO": 0.92,
+    "GB/T": 0.90
+}
+            charging_rates = {
+                "AC Type 1": 15, "AC Type 2": 18, "CCS": 25, "CHAdeMO": 25, "GB/T": 20
+            }
+            charger_power = charging_speeds.get(chargingType, 7.4)
+            efficiency = charging_efficiency.get(chargingType, 0.90)
+            rate = charging_rates.get(chargingType, 18)
+            energy_needed_kwh = (target_battery_level - initial_battery_level) / 100 * battery_capacity
+            energy_from_grid = energy_needed_kwh / efficiency
+            charging_cost = energy_from_grid * rate
+            # Charging time calculation (as before, using efficiency)
+            charging_time_hours = energy_needed_kwh / (charger_power * efficiency)
+            charging_time_min = charging_time_hours * 60
+            estimated_final_battery = target_battery_level
 
         # Parse arrival_time string to datetime object (assuming format HH:MM)
         today = date.today()
@@ -445,9 +589,10 @@ def add_vehicle():
             "arrival_time": arrival_time_full,
             "departure_time": departure_time_full,
             "chargingType": chargingType,
+            "estimated_final_battery": estimated_final_battery if estimated_final_battery is not None else None,
             "initial_battery_level": initial_battery_level,
             "target_battery_level": target_battery_level,
-            "target_charge_minutes": target_charge_minutes,
+
             "battery_capacity": battery_capacity,
             "charging_time_minutes": round(charging_time_min),
             "charging_cost": round(charging_cost) if charging_cost is not None else None,
@@ -471,7 +616,7 @@ def add_vehicle():
             "wait_time_minutes": wait_time_minutes,
             "departure_time": departure_time_full,
             "available_slots": available_slots,
-            "target_type": "minutes" if target_charge_minutes is not None else "percentage"
+            "target_type": "minutes" if charging_time_min is not None else "percentage"
         }), 201
     except CalculationError as e:
         raise e # Re-raise CalculationError as is
@@ -507,7 +652,12 @@ def remove_vehicle():
         # Calculate available slots dynamically after removal (do not update Firestore)
         vehicles_ref = station_doc_ref.collection("vehicles")
         charging_count = sum(1 for doc in vehicles_ref.stream() if doc.to_dict().get('status', '').upper() == 'CHARGING')
-        return jsonify({"message": "Vehicle removed successfully!"}), 200
+        return jsonify({
+            "message": "Registration successful!",
+            "station_id": station_id,
+            "email": email,
+            "name": name
+        }), 201
     except Exception as e:
         import traceback
         print(f"An error occurred during remove_vehicle: {e}")
@@ -585,10 +735,10 @@ def calculate_charging_time(initial_battery_level, target_battery_level, battery
         battery_percentage_to_charge = target_battery_level - initial_battery_level
         energy_needed_kwh = (battery_percentage_to_charge / 100) * battery_capacity_kWh
         actual_energy_consumed = energy_needed_kwh / efficiency  # Account for charging losses
-        charging_time_hours = energy_needed_kwh / charging_speed_kw
+        charging_time_hours = energy_needed_kwh / (charging_speed_kw * efficiency)
         charging_time_minutes = charging_time_hours * 60
         charging_rate = charging_rates.get(charging_type, 15)
-        charging_cost = actual_energy_consumed * charging_rate
+        charging_cost = (energy_needed_kwh / efficiency) * charging_rate
         return charging_time_minutes, charging_cost
 
 @app.errorhandler(InvalidUsage)
@@ -823,6 +973,53 @@ def station_queue(station_id):
             } for b in bks
         ], key=lambda x: x['start_time'])
     return jsonify({"slots": result})
+
+@app.route("/verify-otp", methods=["POST"])
+def verify_otp():
+    data = request.json
+    station_id = data.get("station_id")
+    otp = data.get("otp")
+    new_access_key = data.get("new_access_key")
+    if not station_id or not otp or not new_access_key:
+        return jsonify({"success": False, "message": "Missing required fields."}), 400
+
+    doc_ref = db.collection("charging_stations").document(station_id)
+    doc = doc_ref.get()
+    if not doc.exists:
+        return jsonify({"success": False, "message": "Station ID not found."}), 404
+    station_data = doc.to_dict()
+    stored_otp = station_data.get("reset_otp")
+    otp_expiry = station_data.get("reset_otp_expiry")
+    if not stored_otp or not otp_expiry:
+        return jsonify({"success": False, "message": "OTP not found. Please request a new OTP."}), 400
+
+    # Convert Firestore timestamp to datetime if needed
+    if hasattr(otp_expiry, 'to_datetime'):
+        otp_expiry = otp_expiry.to_datetime()
+    elif isinstance(otp_expiry, dict) and 'seconds' in otp_expiry:
+        from datetime import timezone
+        otp_expiry = datetime.fromtimestamp(otp_expiry['seconds'], tz=timezone.utc)
+
+    if otp != stored_otp:
+        return jsonify({
+            "success": False, 
+            "message": "The OTP you entered is incorrect. Please check and try again."
+        }), 400
+    from datetime import timezone
+    current_time = datetime.now(timezone.utc)
+    if current_time > otp_expiry:
+        return jsonify({
+            "success": False, 
+            "message": f"This OTP has expired. Please request a new OTP."
+        }), 400
+
+    # Update access key and clear OTP fields
+    doc_ref.update({
+        'access_key': new_access_key,
+        'reset_otp': firestore.DELETE_FIELD,
+        'reset_otp_expiry': firestore.DELETE_FIELD
+    })
+    return jsonify({"success": True, "message": "Access key updated successfully."}), 200
 
 if __name__ == "__main__":
     app.run(debug=True)
