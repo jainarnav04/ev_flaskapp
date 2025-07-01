@@ -48,8 +48,8 @@ Charging costs are calculated based on:
 
 1. Clone the repository:
 ```bash
-git clone https://github.com/yourusername/EV-Charging-Station.git
-cd EV-Charging-Station
+git clone https://github.com/jainarnav04/ev_flaskapp
+cd ev_flaskapp
 ```
 
 2. Install required packages:
