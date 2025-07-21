@@ -1,4 +1,4 @@
-from main import app, update_all_station_wait_times, remove_completed_vehicles
+from auth import app, update_all_station_wait_times, remove_completed_vehicles
 from apscheduler.schedulers.background import BackgroundScheduler
 import atexit
 import time
