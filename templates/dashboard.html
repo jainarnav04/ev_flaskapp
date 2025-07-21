@@ -44,6 +44,7 @@
                         <th>Slot Number</th>
                         <th>Vehicle Number</th>
                         <th>Estimated Arrival Time</th>
+                        <th>Charging Start Time</th>
                         <th>Estimated Departure Time</th>
                         <th>Charging Type</th>
                         <th>Battery Capacity</th>
@@ -63,6 +64,7 @@
                         <td>{% if vehicle.slot_number %}{{ vehicle.slot_number }}{% else %}N/A{% endif %}</td>
                         <td>{{ vehicle.vehicle_number }}</td>
                         <td>{{ vehicle.arrival_time }}</td>
+                        <td>{% if vehicle.charging_start_time %}{{ vehicle.charging_start_time }}{% else %}N/A{% endif %}</td>
                         <td>{{ vehicle.departure_time }}</td>
                         <td>{{ vehicle.chargingType }}</td>
                         <td>{{ vehicle.battery_capacity }} kWh</td>
@@ -1034,6 +1036,32 @@ function closeBookingResultModal() {
 document.addEventListener('DOMContentLoaded', function() {
     fetchAndRenderStationQueue('{{ station.id }}');
 });
+</script>
+<script>
+    // Get the initial number of vehicles displayed on the page
+    const initialVehicleCount = document.querySelectorAll("#vehicle-table tbody tr").length;
+
+    // This function will run on a schedule
+    async function checkForUpdates() {
+        try {
+            // Ask our new API for the latest vehicle count
+            const response = await fetch('/api/vehicle_count');
+            const data = await response.json();
+
+            if (data.vehicle_count !== undefined && data.vehicle_count !== initialVehicleCount) {
+                // If the count on the server is different from what's on the page...
+                console.log('Change detected! Refreshing page...');
+                location.reload(); // ...refresh the page!
+            } else {
+                console.log('No changes detected.');
+            }
+        } catch (error) {
+            console.error('Error checking for updates:', error);
+        }
+    }
+
+    // Run the checkForUpdates function every 20 seconds
+    setInterval(checkForUpdates, 20000*3); 
 </script>
 </body>
 </html>
