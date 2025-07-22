@@ -204,38 +204,6 @@ def reset_access_key():
     else:
         return jsonify({"success": False, "message": "Station ID not found."}), 404
 
-def update_vehicle_statuses(vehicles_ref):
-    """Update vehicle statuses based on current time."""
-    now = datetime.now()
-    batch = db.batch()
-    updated_count = 0
-    
-    for vehicle_doc in vehicles_ref.stream():
-        vehicle_data = vehicle_doc.to_dict()
-        vehicle_ref = vehicles_ref.document(vehicle_doc.id)
-        
-        # Only update if status is WAITING and charging start time has passed
-        if (vehicle_data.get('status') == 'WAITING' and 
-            'charging_start_time' in vehicle_data):
-            try:
-                start_time = datetime.strptime(
-                    vehicle_data['charging_start_time'], 
-                    '%Y-%m-%d %H:%M'
-                )
-                if now >= start_time:
-                    batch.update(vehicle_ref, {'status': 'CHARGING'})
-                    batch.update(vehicle_ref, {'wait_time_minutes': 0})
-                    updated_count += 1
-            except (ValueError, TypeError) as e:
-                print(f"Error parsing charging time for vehicle {vehicle_doc.id}: {e}")
-    
-    # Commit all updates in a single batch
-    if updated_count > 0:
-        batch.commit()
-        print(f"Updated {updated_count} vehicle(s) to CHARGING status.")
-    
-    return updated_count
-
 @app.route("/dashboard")
 def dashboard():
     if "station_id" not in session:
@@ -247,11 +215,6 @@ def dashboard():
 
     doc_ref = db.collection("charging_stations").document(station_id)
     doc = doc_ref.get()
-    
-    # Update vehicle statuses before fetching them
-    if doc.exists:
-        vehicles_ref = doc_ref.collection("vehicles")
-        update_vehicle_statuses(vehicles_ref)
 
     if doc.exists:
         station_data = doc.to_dict()
@@ -259,90 +222,72 @@ def dashboard():
         print("Station Charging Type from DB:", station_data.get("chargingType")) # Debug print for charging type
         
         # Fetch vehicles associated with this station from the vehicles subcollection
-        vehicles_ref = db.collection("charging_stations").document(station_id).collection("vehicles").order_by("arrival_time")
+        vehicles_ref = db.collection("charging_stations").document(station_id).collection("vehicles").order_by("arrival_time") # Order by arrival_time
         vehicles = []
-        now = datetime.now()
-        
         for doc in vehicles_ref.stream():
             vehicle_data = doc.to_dict()
             vehicle_data["id"] = doc.id  # Add the document ID to the vehicle data
-            
-            # Ensure all required fields exist with defaults
-            vehicle_data['status'] = vehicle_data.get('status', 'WAITING').upper()
-            
-            try:
-                # Parse and format times from stored values
-                if 'arrival_time' in vehicle_data:
-                    arrival_dt = datetime.strptime(vehicle_data['arrival_time'], '%Y-%m-%d %H:%M')
-                    vehicle_data['arrival_dt'] = arrival_dt
-                    
-                    # Use stored charging_start_time if available
-                    if 'charging_start_time' in vehicle_data and vehicle_data['charging_start_time']:
-                        charging_start_dt = datetime.strptime(
-                            vehicle_data['charging_start_time'], 
-                            '%Y-%m-%d %H:%M'
-                        )
-                        vehicle_data['start_time'] = vehicle_data['charging_start_time']
-                        
-                        # Use stored departure_time if available
-                        if 'departure_time' in vehicle_data and vehicle_data['departure_time']:
-                            departure_dt = datetime.strptime(
-                                vehicle_data['departure_time'], 
-                                '%Y-%m-%d %H:%M'
-                            )
-                            vehicle_data['end_time'] = vehicle_data['departure_time']
-                        else:
-                            # Calculate departure_time if missing
-                            charging_time = vehicle_data.get('charging_time_minutes', 0)
-                            departure_dt = charging_start_dt + timedelta(minutes=int(charging_time))
-                            vehicle_data['end_time'] = departure_dt.strftime('%Y-%m-%d %H:%M')
-                            
-                        # Update status based on current time
-                        if vehicle_data['status'] == 'WAITING' and now >= charging_start_dt:
-                            vehicle_data['status'] = 'CHARGING'
-                    
-                    vehicles.append(vehicle_data)
-                    
-            except Exception as e:
-                print(f"Error processing vehicle {doc.id}: {e}")
-                continue
+            # Ensure start_time and end_time are present and are full datetime strings
+            arrival_time = vehicle_data.get('arrival_time')
+            charging_time = vehicle_data.get('charging_time_minutes')
+            if arrival_time and charging_time is not None:
+                # Parse arrival_time if string
+                if isinstance(arrival_time, str):
+                    try:
+                        arrival_dt = datetime.strptime(arrival_time, '%Y-%m-%d %H:%M')
+                    except Exception:
+                        arrival_dt = None
+                else:
+                    arrival_dt = arrival_time
+                if arrival_dt:
+                    vehicle_data['start_time'] = arrival_dt.strftime('%Y-%m-%d %H:%M')
+                    end_dt = arrival_dt + timedelta(minutes=int(charging_time))
+                    vehicle_data['end_time'] = end_dt.strftime('%Y-%m-%d %H:%M')
+            vehicles.append(vehicle_data)
 
-        # --- Calculate slot free times based on vehicle schedules ---
-        slot_free_time = {}
-        total_slots = int(station_data.get('totalSlots') or station_data.get('total_slots') or 2)
-        
-        # Group vehicles by slot
-        slot_vehicles = {i: [] for i in range(1, total_slots + 1)}
+        # --- Compute free time for each slot with queue logic ---
+        from collections import defaultdict
+        slot_queues = defaultdict(list)
         for v in vehicles:
-            slot = int(v.get('slot_number', 1))
-            if 1 <= slot <= total_slots:
-                slot_vehicles[slot].append(v)
-        
-        # Calculate free time for each slot
-        for slot, slot_vs in slot_vehicles.items():
-            # Sort vehicles in this slot by start time
-            slot_vs_sorted = sorted(
-                [v for v in slot_vs if 'start_time' in v and 'end_time' in v],
-                key=lambda x: x['start_time']
-            )
-            
-            if not slot_vs_sorted:
-                slot_free_time[slot] = now.strftime('%Y-%m-%d %H:%M')
-                continue
-                
-            # Find the latest end time in this slot
-            last_end = max(
-                [datetime.strptime(v['end_time'], '%Y-%m-%d %H:%M') for v in slot_vs_sorted]
-            )
-            
-            # Add 1-minute buffer after the last vehicle
-            slot_free_time[slot] = (last_end + timedelta(minutes=1)).strftime('%Y-%m-%d %H:%M')
-        
-        print("Slot free times with 1-minute buffer:", slot_free_time)
-        
-        # Use the latest wait time from the database (updated by the scheduled job)
-        wait_minutes = station_data.get('latest_wait_time_minutes', 0)
-        print(f"Current wait time from database: {wait_minutes} minutes")
+            slot = v.get('slot_number') or v.get('slot') or 1
+            slot_queues[slot].append(v)
+        slot_free_time = {}
+        from datetime import datetime
+        now = datetime.now()
+        # Get all possible slots (from vehicles and from station data if available)
+        all_slots = set(slot_queues.keys())
+        total_slots = station_data.get('totalSlots') or station_data.get('total_slots')
+        if total_slots:
+            all_slots.update(range(1, int(total_slots) + 1))
+        print("--- Slot Queue Debug ---")
+        for slot in sorted(all_slots):
+            queue = slot_queues.get(slot, [])
+            # Sort vehicles by arrival_time (parsed as datetime)
+            queue_sorted = sorted(queue, key=lambda v: datetime.strptime(v['arrival_time'], '%Y-%m-%d %H:%M')) if queue else []
+            if queue_sorted:
+                first_arrival = datetime.strptime(queue_sorted[0]['arrival_time'], '%Y-%m-%d %H:%M')
+                prev_end = min(now, first_arrival)
+            else:
+                prev_end = now
+            print(f"Slot {slot} queue:")
+            for idx, v in enumerate(queue_sorted):
+                arrival_time = v.get('arrival_time')
+                charging_time = v.get('charging_time_minutes')
+                if isinstance(arrival_time, str):
+                    try:
+                        arrival_dt = datetime.strptime(arrival_time, '%Y-%m-%d %H:%M')
+                    except Exception:
+                        arrival_dt = now
+                else:
+                    arrival_dt = arrival_time or now
+                start_dt = max(arrival_dt, prev_end)
+                end_dt = start_dt + timedelta(minutes=int(charging_time) if charging_time is not None else 0)
+                print(f"  Vehicle {v.get('vehicle_number','?')} (id={v.get('id')}) arrives {arrival_dt}, starts {start_dt}, ends {end_dt}")
+                prev_end = end_dt
+            # The slot is free after the last vehicle ends (or now if empty)
+            slot_free_time[slot] = prev_end.strftime('%Y-%m-%d %H:%M')
+            print(f"  Slot {slot} free at: {slot_free_time[slot]}")
+        print("Slot free times:", slot_free_time)
 
         # Dynamically calculate available slots just before rendering
         total_slots = station_data.get('totalSlots') or station_data.get('total_slots')
@@ -596,47 +541,26 @@ def add_vehicle():
             wait = (max_dep - arrival_datetime_obj).total_seconds() // 60
             slot_waits[i] = max(0, int(wait))
             print(f"Slot {i}: max departure = {max_dep}, wait = {slot_waits[i]} min")
-        # Find slot with minimum wait and get its free time
+        # Find slot with minimum wait
         assigned_slot_number = min(slot_waits, key=slot_waits.get, default=1)
         wait_time_minutes = slot_waits[assigned_slot_number]
+        vehicle_status = "CHARGING" if wait_time_minutes == 0 else "WAITING"
         slot_number = assigned_slot_number
-        
-        # Calculate charging start time (slot's free time + 1 minute buffer)
-        if wait_time_minutes > 0:
-            # Add 1 minute to wait time to account for buffer
-            wait_time_minutes += 1
-            # Charging starts after wait time (which now includes buffer)
-            charging_start_datetime_obj = arrival_datetime_obj + timedelta(minutes=wait_time_minutes)
-            vehicle_status = "WAITING"
-        else:
-            # If no wait, charging starts at arrival time
-            charging_start_datetime_obj = arrival_datetime_obj
-            vehicle_status = "CHARGING"
-            
-        # Calculate departure time (charging start time + charging duration)
-        departure_datetime_obj = charging_start_datetime_obj + timedelta(minutes=round(charging_time_min))
-        
-        # Update wait time to be the difference between charging start and arrival
-        actual_wait_minutes = max(0, (charging_start_datetime_obj - arrival_datetime_obj).total_seconds() // 60)
-        
-        print("DEBUG: Reached point 1 in add_vehicle")  # Add this before the print statements in question
-        print(f"Assigned slot: {slot_number}, wait time: {actual_wait_minutes} min, status: {vehicle_status}")
-        print("DEBUG: Reached point 2 in add_vehicle")  # Add this after the print statements in question
-        print(f"Charging starts at: {charging_start_datetime_obj}, ends at: {departure_datetime_obj}")
+        print(f"Assigned slot: {slot_number}, wait time: {wait_time_minutes} min, status: {vehicle_status}")
 
         # Store station wait time in Firestore
         try:
-            station_doc_ref.update({"latest_wait_time_minutes": actual_wait_minutes})
+            station_doc_ref.update({"latest_wait_time_minutes": wait_time_minutes})
         except Exception as e:
             print(f"Warning: Could not update latest_wait_time_minutes for station {station_id}: {e}")
+
+        # Calculate estimated departure time
+        total_duration_minutes = charging_time_min + wait_time_minutes
+        departure_datetime_obj = arrival_datetime_obj + timedelta(minutes=total_duration_minutes)
         
-        # Format times as full datetime strings
+        # Format arrival and departure as full datetime strings
         arrival_time_full = arrival_datetime_obj.strftime("%Y-%m-%d %H:%M")
         departure_time_full = departure_datetime_obj.strftime("%Y-%m-%d %H:%M")
-        charging_start_time_full = charging_start_datetime_obj.strftime("%Y-%m-%d %H:%M")
-        
-        # The charging start time is already calculated above with the slot's free time
-        # which includes the 1-minute buffer from the previous vehicle's departure
 
         vehicle_doc_ref = station_doc_ref.collection("vehicles").document()
         new_vehicle_id = vehicle_doc_ref.id
@@ -646,11 +570,11 @@ def add_vehicle():
             "vehicle_number": vehicle_number,
             "arrival_time": arrival_time_full,
             "departure_time": departure_time_full,
-            "charging_start_time": charging_start_time_full,
             "chargingType": chargingType,
             "estimated_final_battery": estimated_final_battery if estimated_final_battery is not None else None,
             "initial_battery_level": initial_battery_level,
             "target_battery_level": target_battery_level,
+
             "battery_capacity": battery_capacity,
             "charging_time_minutes": round(charging_time_min),
             "charging_cost": round(charging_cost) if charging_cost is not None else None,
@@ -817,7 +741,8 @@ def handle_invalid_usage(error):
     response = jsonify(error.to_dict())
     response.status_code = error.status_code
     return response
-    
+
+
 @app.route("/verify-otp", methods=["POST"])
 def verify_otp():
     data = request.json
@@ -865,90 +790,5 @@ def verify_otp():
     })
     return jsonify({"success": True, "message": "Access key updated successfully."}), 200
 
-@app.route("/api/vehicle_count")
-def vehicle_count():
-    if "station_id" not in session:
-        return jsonify({"error": "Not logged in"}), 401
-    vehicles_ref = db.collection("charging_stations").document(session["station_id"]).collection("vehicles")
-    count = len(list(vehicles_ref.stream()))
-    return jsonify({"vehicle_count": count})
-# Add this import at the top of your main.py file
-from apscheduler.schedulers.background import BackgroundScheduler
-
-# Add this new function somewhere in your main.py file
-def update_all_station_wait_times():
-    """
-    This function runs in the background to update wait times for ALL stations.
-    """
-    with app.app_context():  # Required for background tasks to access the app
-        print("SCHEDULER: Running job to update wait times...")
-        stations_ref = db.collection("charging_stations")
-        
-        for station_doc in stations_ref.stream():
-            station_id = station_doc.id
-            station_data = station_doc.to_dict()
-            now = datetime.now()
-
-            # This logic is the same as in your dashboard function
-            vehicles_ref = station_doc.reference.collection("vehicles")
-            total_slots = int(station_data.get('total_slots', 0))
-            slot_free_at = {i: now for i in range(1, total_slots + 1)}
-
-            for v_doc in vehicles_ref.stream():
-                v = v_doc.to_dict()
-                departure_time_str = v.get('departure_time')
-                if not departure_time_str: continue
-                try:
-                    slot_number = int(v.get('slot_number', 1))
-                    departure_dt = datetime.strptime(departure_time_str, '%Y-%m-%d %H:%M')
-                    if departure_dt > now:
-                        current_free_time = slot_free_at.get(slot_number, now)
-                        slot_free_at[slot_number] = max(current_free_time, departure_dt)
-                except (ValueError, TypeError):
-                    continue
-
-            wait_minutes = 0
-            if slot_free_at:
-                earliest_free_dt = min(slot_free_at.values())
-                if earliest_free_dt > now:
-                    wait_minutes = round((earliest_free_dt - now).total_seconds() / 60)
-            
-            current_wait_time = station_data.get('latest_wait_time_minutes')
-            if current_wait_time is None or int(current_wait_time) != wait_minutes:
-                print(f"SCHEDULER: Updating station '{station_id}' wait time from {current_wait_time} to {wait_minutes} min.")
-                station_doc.reference.update({'latest_wait_time_minutes': wait_minutes})
-def remove_completed_vehicles():
-    """
-    This background job checks all stations for completed vehicles and removes them.
-    A vehicle is 'completed' if its departure time is in the past.
-    """
-    with app.app_context(): # Required for background tasks
-        print("SCHEDULER: Running job to remove completed vehicles...")
-        now = datetime.now()
-        stations_ref = db.collection("charging_stations")
-        
-        for station_doc in stations_ref.stream():
-            vehicles_ref = station_doc.reference.collection("vehicles")
-            for vehicle_doc in vehicles_ref.stream():
-                vehicle_data = vehicle_doc.to_dict()
-                departure_time_str = vehicle_data.get('departure_time')
-
-                if not departure_time_str:
-                    continue
-
-                try:
-                    departure_dt = datetime.strptime(departure_time_str, '%Y-%m-%d %H:%M')
-                    
-                    # Check if the vehicle's departure time has passed
-                    if departure_dt <= now:
-                        print(f"SCHEDULER: Removing completed vehicle '{vehicle_data.get('vehicle_number')}' from station '{station_doc.id}'.")
-                        vehicle_doc.reference.delete()
-                        
-                except (ValueError, TypeError):
-                    # Ignore vehicles with an invalid departure time format
-                    continue
-
 if __name__ == "__main__":
-    
-    port = int(os.environ.get("PORT", 5000))
-    app.run(host='0.0.0.0', port=port, debug=False)
+    app.run(debug=True)
