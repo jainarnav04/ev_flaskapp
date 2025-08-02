@@ -2,8 +2,9 @@ services:
   - type: web
     name: easy-vahan-web
     env: python
-    buildCommand: pip install -r requirements.txt
-    startCommand: gunicorn auth:app
+    buildCommand: |
+      pip install -r requirements.txt
+    startCommand: gunicorn --worker-tmp-dir /dev/shm --workers=2 --threads=4 --worker-class=gthread --timeout 120 auth:app
     envVars:
       - key: PYTHON_VERSION
         value: 3.9.0
@@ -11,14 +12,49 @@ services:
         value: auth.py
       - key: FLASK_ENV
         value: production
+      - key: PYTHONUNBUFFERED
+        value: "true"
+      - key: GOOGLE_APPLICATION_CREDENTIALS
+        fromService:
+          name: firebase-credentials
+          property: path
+      - key: SENDGRID_API_KEY
+        fromService:
+          name: sendgrid-key
+          property: value
+    autoDeploy: true
     plan: free
 
-  - type: worker
+  - type: cron  # Changed from 'worker' to 'cron'
     name: easy-vahan-scheduler
     env: python
-    buildCommand: pip install -r requirements.txt
+    schedule: "*/5 * * * *"  # Every 5 minutes
+    buildCommand: |
+      pip install -r requirements.txt
     startCommand: python scheduler.py
     envVars:
       - key: PYTHON_VERSION
         value: 3.9.0
-    plan: free
+      - key: FLASK_APP
+        value: auth.py
+      - key: FLASK_ENV
+        value: production
+      - key: PYTHONUNBUFFERED
+        value: "true"
+      - key: GOOGLE_APPLICATION_CREDENTIALS
+        fromService:
+          name: firebase-credentials
+          property: path
+      - key: SENDGRID_API_KEY
+        fromService:
+          name: sendgrid-key
+          property: value
+      - key: TZ
+        value: Asia/Kolkata  # Your timezone
+    autoDeploy: true
+
+envVars:
+  - key: PYTHONUNBUFFERED
+    value: "true"
+  - key: TZ
+    value: Asia/Kolkata
