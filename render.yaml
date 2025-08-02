@@ -14,16 +14,10 @@ services:
         value: production
       - key: PYTHONUNBUFFERED
         value: "true"
-      - key: GOOGLE_APPLICATION_CREDENTIALS
-        fromService:
-          name: firebase-credentials
-          property: path
-      - key: SENDGRID_API_KEY
-        fromService:
-          name: sendgrid-key
-          property: value
       - key: TZ
         value: Asia/Kolkata
+      # Remove GOOGLE_APPLICATION_CREDENTIALS and SENDGRID_API_KEY from here
+      # Set them manually in Render dashboard instead
     autoDeploy: true
     plan: free
 
@@ -43,14 +37,8 @@ services:
         value: production
       - key: PYTHONUNBUFFERED
         value: "true"
-      - key: GOOGLE_APPLICATION_CREDENTIALS
-        fromService:
-          name: firebase-credentials
-          property: path
-      - key: SENDGRID_API_KEY
-        fromService:
-          name: sendgrid-key
-          property: value
       - key: TZ
         value: Asia/Kolkata
+      # Remove GOOGLE_APPLICATION_CREDENTIALS and SENDGRID_API_KEY from here
+      # Set them manually in Render dashboard instead
     autoDeploy: true
