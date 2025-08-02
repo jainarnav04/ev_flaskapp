@@ -1,6 +1,6 @@
 services:
   - type: web
-    name: easy-vahan-web
+    name: ev_flaskapp
     env: python
     buildCommand: |
       pip install -r requirements.txt
@@ -42,3 +42,4 @@ services:
       # Remove GOOGLE_APPLICATION_CREDENTIALS and SENDGRID_API_KEY from here
       # Set them manually in Render dashboard instead
     autoDeploy: true
+
