@@ -19,7 +19,7 @@ services:
       # Remove GOOGLE_APPLICATION_CREDENTIALS and SENDGRID_API_KEY from here
       # Set them manually in Render dashboard instead
     autoDeploy: true
-    plan: free
+    plan: starter
 
   - type: cron
     name: easy-vahan-scheduler
@@ -42,5 +42,6 @@ services:
       # Remove GOOGLE_APPLICATION_CREDENTIALS and SENDGRID_API_KEY from here
       # Set them manually in Render dashboard instead
     autoDeploy: true
+
 
 
