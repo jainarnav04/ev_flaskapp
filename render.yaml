@@ -24,7 +24,7 @@ services:
   - type: cron
     name: easy-vahan-scheduler
     env: python
-    schedule: "*/1 * * * *"
+    schedule: "*/5 * * * *"
     buildCommand: |
       pip install -r requirements.txt
     startCommand: python scheduler.py
@@ -42,4 +42,5 @@ services:
       # Remove GOOGLE_APPLICATION_CREDENTIALS and SENDGRID_API_KEY from here
       # Set them manually in Render dashboard instead
     autoDeploy: true
+
 
