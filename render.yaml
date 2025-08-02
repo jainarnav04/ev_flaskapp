@@ -22,13 +22,15 @@ services:
         fromService:
           name: sendgrid-key
           property: value
+      - key: TZ
+        value: Asia/Kolkata
     autoDeploy: true
     plan: free
 
-  - type: cron  # Changed from 'worker' to 'cron'
+  - type: cron
     name: easy-vahan-scheduler
     env: python
-    schedule: "*/5 * * * *"  # Every 5 minutes
+    schedule: "*/1 * * * *"
     buildCommand: |
       pip install -r requirements.txt
     startCommand: python scheduler.py
@@ -50,11 +52,5 @@ services:
           name: sendgrid-key
           property: value
       - key: TZ
-        value: Asia/Kolkata  # Your timezone
+        value: Asia/Kolkata
     autoDeploy: true
-
-envVars:
-  - key: PYTHONUNBUFFERED
-    value: "true"
-  - key: TZ
-    value: Asia/Kolkata
