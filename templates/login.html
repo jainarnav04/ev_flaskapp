@@ -348,7 +348,7 @@
                             formData.action = this.classList.contains('login') ? 'login' : 'register';
 
                             const response = await fetch('/login', {
-                                method: 'POST',
+                                method: 'GET',
                                 headers: {
                                     'Content-Type': 'application/json',
                                 },
