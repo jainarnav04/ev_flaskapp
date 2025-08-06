@@ -114,10 +114,17 @@ def driver():
 def login_register():
     """Handle both login and registration."""
     if request.method == "GET":
-        return render_template("login.html")  # Ensure login.html is inside "templates" folder
+        return render_template("login.html")
 
     try:
-        data = request.json
+        # Handle both JSON and FormData
+        if request.method == 'POST':
+            if request.is_json:
+                 data = request.get_json()
+            else:
+            # Convert FormData to dict
+                data = request.form.to_dict()
+        
         print(f"Received Data: {data}")  # Debugging
 
         action = data.get("action")  # Determines if it's login or register
@@ -134,17 +141,16 @@ def login_register():
             if doc.exists:
                 station_data = doc.to_dict()
                 if station_data["access_key"] == access_key:
-                    session["station_id"] = station_id  # Store station_id in the session
+                    session["station_id"] = station_id
                     return jsonify({
                         "message": "Login successful!", 
                         "station_data": station_data,
-                        "redirect": "/dashboard"  # Optional: instruct the frontend to redirect
+                        "redirect": "/dashboard"
                     }), 200
                 return jsonify({"error": "Invalid access key!"}), 401
             return jsonify({"error": "Station ID not found!"}), 404
 
         elif action == "register":
-            station_id = data.get("station_id")
             email = data.get("email")
             if not station_id or not email:
                 return jsonify({"error": "Missing station ID or email!"}), 400
@@ -179,7 +185,6 @@ def login_register():
     except Exception as e:
         print(f"An error occurred in login_register: {e}")
         return jsonify({"error": f"An internal server error occurred: {str(e)}"}), 500
-
 @app.route("/reset-access-key", methods=["POST"])
 def reset_access_key():
     data = request.json
