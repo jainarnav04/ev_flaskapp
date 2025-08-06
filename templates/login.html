@@ -43,7 +43,7 @@
     {% include 'otp_modal.html' %}
     <div class="container">
         <div class="form-box login">
-            <form action="#" class="login">
+            <form action="/login" method="GET" class="login">
                 <h1>Welcome Back!</h1>
                 <p>Please login to your account</p>
                 <div class="input-box">
@@ -75,7 +75,7 @@
         </div>
 
         <div class="form-box register">
-            <form action="#" class="register">
+            <form action="/login" method="POST" class="register">
                 <h1>Create Account</h1>
                 <p>Register your charging station</p>
                 <div class="input-box">
@@ -347,7 +347,7 @@
                             // Add action based on form class
                             formData.action = this.classList.contains('login') ? 'login' : 'register';
 
-                            const response = await fetch('/', {
+                            const response = await fetch('/login', {
                                 method: 'POST',
                                 headers: {
                                     'Content-Type': 'application/json',
