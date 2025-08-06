@@ -965,6 +965,7 @@ def remove_completed_vehicles():
 def logout():
     """Handle user logout by clearing the session and redirecting to login page."""
     # Clear the session data
+    print("This is logout section")
     session.clear()
     # Redirect to the login page
     return redirect('/login')
