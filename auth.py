@@ -112,68 +112,64 @@ def driver():
 
 @app.route("/login", methods=["GET", "POST"])
 def login_register():
-    """Handle both login and registration."""
+    """Render login form (GET) and handle login/register (POST)."""
+
     if request.method == "GET":
-        return render_template("login.html")
+        return render_template("login.html")  # ✅ Make sure you have login.html in /templates
 
     try:
         # Handle both JSON and FormData
-        if request.method == 'POST':
-            if request.is_json:
-                 data = request.get_json()
-            else:
-            # Convert FormData to dict
-                data = request.form.to_dict()
-        
-        print(f"Received Data: {data}")  # Debugging
+        if request.is_json:
+            data = request.get_json()
+        else:
+            data = request.form.to_dict()
 
-        action = data.get("action")  # Determines if it's login or register
+        print(f"📨 Received Data: {data}")  # Debug
+
+        action = data.get("action")  # login or register
         station_id = data.get("station_id")
         access_key = data.get("access_key")
 
         if not station_id or not access_key:
-            return jsonify({"error": "Missing credentials!"}), 400
+            return jsonify({"error": "Missing station ID or access key!"}), 400
 
         doc_ref = db.collection("charging_stations").document(station_id)
 
         if action == "login":
             doc = doc_ref.get()
-            if doc.exists:
-                station_data = doc.to_dict()
-                if station_data["access_key"] == access_key:
-                    session["station_id"] = station_id
-                    return jsonify({
-                        "message": "Login successful!", 
-                        "station_data": station_data,
-                        "redirect": "/dashboard"
-                    }), 200
-                return jsonify({"error": "Invalid access key!"}), 401
-            return jsonify({"error": "Station ID not found!"}), 404
+            if not doc.exists:
+                return jsonify({"error": "Station ID not found!"}), 404
+
+            station_data = doc.to_dict()
+            if station_data["access_key"] == access_key:
+                session["station_id"] = station_id
+                return jsonify({
+                    "message": "Login successful!",
+                    "station_data": station_data,
+                    "redirect": "/dashboard"
+                }), 200
+            return jsonify({"error": "Invalid access key!"}), 401
 
         elif action == "register":
             email = data.get("email")
-            if not station_id or not email:
-                return jsonify({"error": "Missing station ID or email!"}), 400
+            if not email:
+                return jsonify({"error": "Missing email!"}), 400
 
-            # Check if station ID already exists
             if doc_ref.get().exists:
                 return jsonify({"error": "Station ID already exists!"}), 400
-                
-            # Check if email is already registered (case-insensitive)
+
             stations_ref = db.collection("charging_stations")
             email_query = stations_ref.where("email", "==", email.lower().strip()).limit(1)
             email_docs = list(email_query.stream())
-            
             if email_docs:
-                return jsonify({"error": "This email is already registered with another station!"}), 400
+                return jsonify({"error": "This email is already registered!"}), 400
 
-            # Create new station
             doc_ref.set({
                 "station_id": station_id,
                 "access_key": access_key,
                 "email": email.lower().strip()
             })
-            
+
             return jsonify({
                 "message": "Registration successful!",
                 "station_id": station_id,
@@ -183,8 +179,10 @@ def login_register():
         return jsonify({"error": "Invalid action!"}), 400
 
     except Exception as e:
-        print(f"An error occurred in login_register: {e}")
-        return jsonify({"error": f"An internal server error occurred: {str(e)}"}), 500
+        print(f" Error: {e}")
+        return jsonify({"error": f"Internal server error: {str(e)}"}), 500
+
+
 @app.route("/reset-access-key", methods=["POST"])
 def reset_access_key():
     data = request.json
