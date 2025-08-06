@@ -967,7 +967,7 @@ def logout():
     # Clear the session data
     session.clear()
     # Redirect to the login page
-    return render_template("login.html")
+    return redirect(url_for('login_register'))
 
 if __name__ == "__main__":
     # Run the Flask app
